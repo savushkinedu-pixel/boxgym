@@ -19,11 +19,12 @@ export default async function bookingsRoute(fastify) {
     if (error) return reply.status(500).send({ error: error.message });
 
     if (upcoming === 'true') {
-      const now = new Date();
-      const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
       return data.filter((b) => {
         const start = new Date(b.class.start_at);
-        return start >= now && start <= nextWeek && b.status !== 'cancelled';
+        return start >= today && start <= nextWeek && b.status !== 'cancelled';
       });
     }
 
