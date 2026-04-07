@@ -30,9 +30,14 @@ function fmtClass(c) {
 async function getUserByTelegramId(telegramId) {
   try {
     const res = await fetch(`${BACKEND_URL}/users?telegram_id=${telegramId}`);
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const body = await res.text();
+      console.error(`[getUserByTelegramId] telegram_id=${telegramId} → ${res.status}: ${body}`);
+      return null;
+    }
     return res.json();
-  } catch {
+  } catch (err) {
+    console.error(`[getUserByTelegramId] fetch failed for telegram_id=${telegramId}:`, err.message);
     return null;
   }
 }
@@ -394,20 +399,6 @@ bot.on(message('text'), async (ctx, next) => {
   if (skipped.length) msg += `\n\n⚠️ Пропущено:\n${skipped.join('\n')}`;
 
   return ctx.reply(msg, { parse_mode: 'Markdown' });
-});
-
-// ─── [✅ Пришёл] / [❌ Не пришёл] ────────────────────────────────────────────
-
-bot.action(/^checkin_(.+)$/, async (ctx) => {
-  await ctx.answerCbQuery('✅ Отмечено!');
-  const { ok } = await api('PATCH', `/bookings/${ctx.match[1]}/checkin`);
-  if (!ok) ctx.reply('Ошибка при отметке посещения.');
-});
-
-bot.action(/^noshow_(.+)$/, async (ctx) => {
-  await ctx.answerCbQuery('❌ Отмечено');
-  const { ok } = await api('PATCH', `/bookings/${ctx.match[1]}/noshow`);
-  if (!ok) ctx.reply('Ошибка при отметке.');
 });
 
 // ─── Launch ───────────────────────────────────────────────────────────────────

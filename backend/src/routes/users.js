@@ -9,9 +9,10 @@ export default async function usersRoute(fastify) {
       const { data, error } = await supabase
         .from('users')
         .select('*')
-        .eq('telegram_id', parseInt(telegram_id))
-        .single();
-      if (error) return reply.status(404).send({ error: 'User not found' });
+        .eq('telegram_id', telegram_id)   // pass string — PostgREST coerces to bigint
+        .maybeSingle();
+      if (error) return reply.status(500).send({ error: error.message });
+      if (!data) return reply.status(404).send({ error: 'User not found' });
       return data;
     }
 
