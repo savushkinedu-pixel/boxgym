@@ -2,11 +2,15 @@ import 'dotenv/config';
 import Fastify from 'fastify';
 import healthRoute from './routes/health.js';
 import classesRoute from './routes/classes.js';
+import bookingsRoute from './routes/bookings.js';
+import usersRoute from './routes/users.js';
 
 const fastify = Fastify({ logger: true });
 
 fastify.register(healthRoute);
 fastify.register(classesRoute);
+fastify.register(bookingsRoute);
+fastify.register(usersRoute);
 
 const start = async () => {
   try {
