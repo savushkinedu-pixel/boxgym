@@ -401,6 +401,113 @@ bot.on(message('text'), async (ctx, next) => {
   return ctx.reply(msg, { parse_mode: 'Markdown' });
 });
 
+// ─── /balance (атлет) ─────────────────────────────────────────────────────────
+
+bot.command('balance', async (ctx) => {
+  try {
+    const user = await getUserByTelegramId(ctx.from.id);
+    if (!user) return ctx.reply('Сначала зарегистрируйся: /start');
+    if (user.role !== 'athlete') return ctx.reply('Команда /balance только для атлетов.');
+
+    const res = await fetch(`${BACKEND_URL}/memberships/${user.id}`);
+
+    if (res.status === 404) {
+      return ctx.reply('❌ Абонемент не найден. Обратись к администратору.');
+    }
+    if (!res.ok) {
+      return ctx.reply('Не удалось загрузить абонемент. Попробуй позже.');
+    }
+
+    const m = await res.json();
+    const validTo = new Date(m.valid_to);
+    const dateStr = `${validTo.getDate()} ${MONTH_RU[validTo.getMonth()]}`;
+
+    if (m.type === 'unlimited' || m.type === 'personal') {
+      const label = m.type === 'unlimited' ? 'Безлимит' : 'Персональный';
+      return ctx.reply(`💳 Абонемент: ${label} до ${dateStr}`);
+    }
+
+    return ctx.reply(
+      `💳 Абонемент: Осталось ${m.visits_left} визитов из ${m.visits_total}, до ${dateStr}`
+    );
+  } catch (err) {
+    console.error(err);
+    ctx.reply('Ошибка. Попробуй позже.');
+  }
+});
+
+// ─── /history (атлет) ─────────────────────────────────────────────────────────
+
+bot.command('history', async (ctx) => {
+  try {
+    const user = await getUserByTelegramId(ctx.from.id);
+    if (!user) return ctx.reply('Сначала зарегистрируйся: /start');
+    if (user.role !== 'athlete') return ctx.reply('Команда /history только для атлетов.');
+
+    const res = await fetch(`${BACKEND_URL}/transactions/${user.id}`);
+    if (!res.ok) return ctx.reply('Не удалось загрузить историю.');
+
+    const txns = await res.json();
+    const last10 = txns.slice(0, 10);
+
+    if (!last10.length) return ctx.reply('История транзакций пуста.');
+
+    const lines = last10.map((t) => {
+      const d = new Date(t.created_at);
+      const dateStr = `${String(d.getDate()).padStart(2, '0')} ${MONTH_RU[d.getMonth()]}`;
+      const note = t.note ?? t.type;
+      const delta = t.visits_delta !== 0 ? ` (${t.visits_delta > 0 ? '+' : ''}${t.visits_delta} визит)` : '';
+      return `📅 ${dateStr} — ${note}${delta}`;
+    });
+
+    return ctx.reply(lines.join('\n'));
+  } catch (err) {
+    console.error(err);
+    ctx.reply('Ошибка. Попробуй позже.');
+  }
+});
+
+// ─── /freeze (атлет) ──────────────────────────────────────────────────────────
+
+const ADMIN_TELEGRAM_ID = 103842071;
+
+bot.command('freeze', async (ctx) => {
+  try {
+    const user = await getUserByTelegramId(ctx.from.id);
+    if (!user) return ctx.reply('Сначала зарегистрируйся: /start');
+    if (user.role !== 'athlete') return ctx.reply('Команда /freeze только для атлетов.');
+
+    // Найти активный абонемент
+    const mRes = await fetch(`${BACKEND_URL}/memberships/${user.id}`);
+    if (mRes.status === 404) return ctx.reply('❌ Нет активного абонемента для заморозки.');
+    if (!mRes.ok) return ctx.reply('Не удалось загрузить абонемент. Попробуй позже.');
+    const membership = await mRes.json();
+
+    // Создать запрос на заморозку
+    const { ok } = await api('POST', '/freeze-requests', {
+      user_id: user.id,
+      membership_id: membership.id,
+    });
+
+    if (!ok) return ctx.reply('Не удалось отправить заявку. Попробуй позже.');
+
+    await ctx.reply('❄️ Заявка на заморозку отправлена. Администратор свяжется с тобой.');
+
+    // Уведомить администратора
+    try {
+      await ctx.telegram.sendMessage(
+        ADMIN_TELEGRAM_ID,
+        `❄️ Атлет ${user.name} просит заморозить абонемент. /admin для управления`
+      );
+    } catch (e) {
+      console.error('[freeze] Failed to notify admin:', e.message);
+    }
+  } catch (err) {
+    console.error(err);
+    ctx.reply('Ошибка. Попробуй позже.');
+  }
+});
+
 // ─── Launch ───────────────────────────────────────────────────────────────────
 
 bot.launch();

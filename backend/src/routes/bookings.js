@@ -1,5 +1,20 @@
 import supabase from '../lib/supabase.js';
 
+const BOT_TOKEN = process.env.BOT_TOKEN;
+
+async function sendTelegram(telegramId, text) {
+  if (!BOT_TOKEN || !telegramId) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: telegramId, text }),
+    });
+  } catch (err) {
+    console.error('[sendTelegram] error:', err.message);
+  }
+}
+
 export default async function bookingsRoute(fastify) {
   // GET /bookings?class_id=X&user_id=Y&upcoming=true
   fastify.get('/bookings', async (request, reply) => {
@@ -89,17 +104,57 @@ export default async function bookingsRoute(fastify) {
     return data;
   });
 
-  // PATCH /bookings/:id/checkin — отметить посещение
+  // PATCH /bookings/:id/checkin — отметить посещение + автосписание визита
   fastify.patch('/bookings/:id/checkin', async (request, reply) => {
-    const { data, error } = await supabase
+    const { data: booking, error } = await supabase
       .from('bookings')
       .update({ status: 'attended', checked_in_at: new Date().toISOString() })
       .eq('id', request.params.id)
-      .select()
+      .select('*, user:users(id, telegram_id)')
       .single();
 
     if (error) return reply.status(400).send({ error: error.message });
-    return data;
+
+    // Автосписание визита
+    const userId = booking.user?.id;
+    const telegramId = booking.user?.telegram_id;
+
+    if (userId) {
+      const today = new Date().toISOString().split('T')[0];
+      const { data: membership } = await supabase
+        .from('memberships')
+        .select('*')
+        .eq('user_id', userId)
+        .gte('valid_to', today)
+        .eq('is_frozen', false)
+        .limit(1)
+        .maybeSingle();
+
+      if (membership && (membership.type === 'visits' || membership.type === 'single')) {
+        const newVisitsLeft = (membership.visits_left ?? 0) - 1;
+
+        await supabase
+          .from('memberships')
+          .update({ visits_left: newVisitsLeft })
+          .eq('id', membership.id);
+
+        await supabase
+          .from('transactions')
+          .insert({
+            user_id: userId,
+            membership_id: membership.id,
+            visits_delta: -1,
+            type: 'charge',
+            note: 'Списание за тренировку',
+          });
+
+        if (newVisitsLeft === 0 && telegramId) {
+          await sendTelegram(telegramId, 'Твои визиты закончились, обратись к администратору.');
+        }
+      }
+    }
+
+    return booking;
   });
 
   // PATCH /bookings/:id/noshow — не пришёл
