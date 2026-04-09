@@ -13,19 +13,19 @@
 
 ## Supabase
 - Project URL: https://rypgkmnjnyectmcoocoq.supabase.co
-- Таблицы: users, classes, bookings, memberships, transactions
+- Таблицы: users, classes, bookings, memberships, transactions, freeze_requests
 
 ## Структура
 - /backend — REST API
 - /bot — Telegram бот
 - /web — Next.js админ-панель
-- /backend/migrations — SQL миграции (001_init, 002_seed)
+- /backend/migrations — SQL миграции (001_init, 002_seed, 003_freeze_requests)
 
 ## Прогресс
 - [x] M0 — Фундамент: monorepo, Supabase схема, Railway CI/CD, бот /start
 - [x] M1 — Расписание: CRUD классов, /schedule в боте, страница /schedule в вебе
 - [x] M2 — Запись и чекин: бронирование, отмена, /mybookings, /attendees, /mygroup для тренера, /subscribe массовая запись на месяц
-- [ ] M3 — Баланс: абонементы, списание, история транзакций
+- [x] M3 — Баланс: абонементы, автосписание визитов при checkin, история транзакций, freeze-запросы, веб-страница атлетов
 - [ ] M4 — Статистика: дашборд, посещаемость, отчёты
 - [ ] M5 — Полировка: ReplyKeyboardMarkup меню, онбординг, мониторинг, передача тренеру
 
@@ -35,15 +35,31 @@
 - /schedule — расписание на неделю с кнопкой [Записаться]
 - /mybookings — мои записи с кнопкой [Отменить]
 - /subscribe — массовая запись на повторяющиеся тренировки (выбор дней + время)
+- /balance — текущий абонемент (тип, визиты, срок)
+- /history — последние 10 транзакций
+- /freeze — заявка на заморозку абонемента (уведомляет admin telegram_id=103842071)
 
 Тренер:
 - /mygroup — список записанных сегодня / завтра / на неделю
 - /attendees — отметка посещений [✅ Пришёл] [❌ Не пришёл]
 
+## Backend маршруты (актуальные)
+- GET/POST /memberships, PATCH /memberships/:id/freeze|unfreeze
+- GET /memberships/:userId — активный абонемент (valid_to >= today, is_frozen=false)
+- GET/POST /transactions, GET /transactions/export/:userId (CSV)
+- POST /freeze-requests, GET /freeze-requests
+- PATCH /bookings/:id/checkin — автосписание визита + Telegram при visits_left=0
+
+## Веб-страницы
+- /schedule — расписание, создание тренировок
+- /athletes — таблица атлетов, баланс, фильтр должников, кнопка [+ Начислить]
+
 ## Известные особенности
 - Роль берётся из БД по telegram_id (не из сессии)
 - /mybookings показывает тренировки начиная с 00:00 текущего дня
 - Для теста тренера: UPDATE users SET telegram_id=X WHERE name='Иван'
+- Миграцию 003_freeze_requests.sql нужно применить в Supabase вручную
+- Admin telegram_id для уведомлений: 103842071
 
 ## Роли пользователей
 - athlete — записывается, смотрит баланс
@@ -62,6 +78,6 @@ web: cd web && npm run dev
 
 ## Приоритеты разработки
 П1 — Расписание и запись (готово)
-П2 — Баланс и платежи
+П2 — Баланс и платежи (готово)
 П3 — Статистика посещений
 Вне скоупа MVP: инвентарь, эквайринг, CRM, LTV
