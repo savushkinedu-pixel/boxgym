@@ -55,7 +55,10 @@
 - /athletes — таблица атлетов, баланс, фильтр должников, кнопка [+ Начислить]
 
 ## Известные особенности
-- Роль берётся из БД по telegram_id (не из сессии)
+- Роль берётся из БД по telegram_id (не из сессии) — ВСЕГДА через GET /users?telegram_id=X
+- /balance, /history, /freeze — доступны любой роли (athlete/trainer/admin), проверка роли не нужна
+- /mygroup, /attendees — только trainer (role из БД)
+- /subscribe — только athlete (role из БД)
 - /mybookings показывает тренировки начиная с 00:00 текущего дня
 - Для теста тренера: UPDATE users SET telegram_id=X WHERE name='Иван'
 - Миграцию 003_freeze_requests.sql нужно применить в Supabase вручную
