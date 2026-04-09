@@ -407,7 +407,6 @@ bot.command('balance', async (ctx) => {
   try {
     const user = await getUserByTelegramId(ctx.from.id);
     if (!user) return ctx.reply('Сначала зарегистрируйся: /start');
-    if (user.role !== 'athlete') return ctx.reply('Команда /balance только для атлетов.');
 
     const res = await fetch(`${BACKEND_URL}/memberships/${user.id}`);
 
@@ -442,7 +441,6 @@ bot.command('history', async (ctx) => {
   try {
     const user = await getUserByTelegramId(ctx.from.id);
     if (!user) return ctx.reply('Сначала зарегистрируйся: /start');
-    if (user.role !== 'athlete') return ctx.reply('Команда /history только для атлетов.');
 
     const res = await fetch(`${BACKEND_URL}/transactions/${user.id}`);
     if (!res.ok) return ctx.reply('Не удалось загрузить историю.');
@@ -475,7 +473,6 @@ bot.command('freeze', async (ctx) => {
   try {
     const user = await getUserByTelegramId(ctx.from.id);
     if (!user) return ctx.reply('Сначала зарегистрируйся: /start');
-    if (user.role !== 'athlete') return ctx.reply('Команда /freeze только для атлетов.');
 
     // Найти активный абонемент
     const mRes = await fetch(`${BACKEND_URL}/memberships/${user.id}`);
