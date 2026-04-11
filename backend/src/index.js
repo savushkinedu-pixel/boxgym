@@ -144,8 +144,6 @@ cron.schedule('*/15 * * * *', () => {
 const start = async () => {
   try {
     await fastify.listen({ port: 3001, host: '0.0.0.0' });
-    // Run once on startup for immediate testing
-    autoCheckin().catch((err) => console.error('[autoCheckin] startup run error:', err.message));
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);
