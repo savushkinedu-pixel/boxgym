@@ -25,30 +25,43 @@
 - [x] M0 — Фундамент: monorepo, Supabase схема, Railway CI/CD, бот /start
 - [x] M1 — Расписание: CRUD классов, /schedule в боте, страница /schedule в вебе
 - [x] M2 — Запись и чекин: бронирование, отмена, /mybookings, /attendees, /mygroup для тренера, /subscribe массовая запись на месяц
-- [x] M3 — Баланс: абонементы, автосписание визитов при checkin, история транзакций, freeze-запросы, веб-страница атлетов
+- [x] M3 — Баланс: абонементы, автосписание визитов через cron каждые 15 мин, история транзакций, freeze-запросы, веб-страница атлетов
+- [x] ReplyKeyboardMarkup меню: Расписание, Мои записи, Баланс, История
 - [ ] M4 — Статистика: дашборд, посещаемость, отчёты
-- [ ] M5 — Полировка: ReplyKeyboardMarkup меню, онбординг, мониторинг, передача тренеру
+- [ ] M5 — Полировка: онбординг, мониторинг, деплой Railway
 
 ## Команды бота (актуальные)
 Атлет:
-- /start — регистрация, выбор роли
+- /start — регистрация, выбор роли; для вернувшихся пользователей сразу показывает меню
 - /schedule — расписание на неделю с кнопкой [Записаться]
 - /mybookings — мои записи с кнопкой [Отменить]
 - /subscribe — массовая запись на повторяющиеся тренировки (выбор дней + время)
 - /balance — текущий абонемент (тип, визиты, срок)
 - /history — последние 10 транзакций
 - /freeze — заявка на заморозку абонемента (уведомляет admin telegram_id=103842071)
+- ReplyKeyboardMarkup: кнопки внизу чата — 📅 Расписание, 📋 Мои записи, 💳 Баланс, 📊 История
 
 Тренер:
 - /mygroup — список записанных сегодня / завтра / на неделю
-- /attendees — отметка посещений [✅ Пришёл] [❌ Не пришёл]
+- /attendees — опциональная ручная отметка посещений [✅ Пришёл] [❌ Не пришёл]
+
+## Логика чекина
+- Тренер может отметить вручную через /attendees
+- Если не отметил — cron каждые 15 минут автоматически закрывает всех записанных как attended через 2 часа после окончания тренировки
+- Автосписание: visits/single → visits_left -= 1, unlimited/personal → только проверка valid_to
+- При visits_left = 0 — Telegram-уведомление атлету
 
 ## Backend маршруты (актуальные)
-- GET/POST /memberships, PATCH /memberships/:id/freeze|unfreeze
-- GET /memberships/:userId — активный абонемент (valid_to >= today, is_frozen=false)
+- GET/POST /classes, PUT /classes/:id, DELETE /classes/:id
+- GET /classes?week=current, GET /classes?from=X&to=Y
+- GET /classes/trainer/:id?period=today|tomorrow|week
+- GET/POST /bookings, DELETE /bookings/:id
+- PATCH /bookings/:id/checkin, PATCH /bookings/:id/noshow
+- GET /memberships/:userId, POST /memberships
+- PATCH /memberships/:id/freeze|unfreeze
 - GET/POST /transactions, GET /transactions/export/:userId (CSV)
 - POST /freeze-requests, GET /freeze-requests
-- PATCH /bookings/:id/checkin — автосписание визита + Telegram при visits_left=0
+- GET /users?telegram_id=X
 
 ## Веб-страницы
 - /schedule — расписание, создание тренировок
@@ -61,9 +74,10 @@
 - /subscribe — только athlete (role из БД)
 - /mybookings показывает тренировки начиная с 00:00 текущего дня
 - Для теста тренера: UPDATE users SET telegram_id=X WHERE name='Иван'
-- Миграцию 003_freeze_requests.sql нужно применить в Supabase вручному
+- Миграцию 003_freeze_requests.sql нужно применить в Supabase вручную
 - Admin telegram_id для уведомлений: 103842071
-- Cron автосписания (*/15 * * * *) в backend/src/index.js: находит классы где start_at + duration_min + 120 мин < now(), переводит 'booked' → 'attended', списывает визит. НЕ вызывать при старте сервера — node --watch перезапускает процесс при каждом сохранении и вызывает двойное списание. Защита от двойного списания: .eq('status', 'booked') в запросе — уже attended-букинги не попадают в выборку. Фильтр is_cancelled проверяется в JS (!cls.is_cancelled), не в DB-запросе — .eq('is_cancelled', false) пропускает NULL-значения в PostgreSQL.
+- Cron автосписания (*/15 * * * *) в backend/src/index.js — НЕ вызывать при старте сервера: node --watch перезапускает процесс при каждом сохранении и вызывает двойное списание. Защита: .eq('status', 'booked') в запросе не трогает уже attended-букинги. Фильтр is_cancelled проверяется в JS (!cls.is_cancelled) — .eq('is_cancelled', false) пропускает NULL в PostgreSQL.
+- bot/src/index.js: обработчики schedule/mybookings/balance/history вынесены в именованные функции, bot.command() и bot.hears() используют одну функцию
 
 ## Роли пользователей
 - athlete — записывается, смотрит баланс
@@ -77,7 +91,7 @@
 
 ## Локальный запуск
 backend: cd backend && npm run dev
-bot: cd bot && npm run dev  
+bot: cd bot && npm run dev
 web: cd web && npm run dev
 
 ## Приоритеты разработки
