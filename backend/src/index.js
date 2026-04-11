@@ -35,23 +35,33 @@ async function sendTelegram(telegramId, text) {
 
 async function autoCheckin() {
   const now = new Date();
+  console.log(`[autoCheckin] started at ${now.toISOString()}`);
 
   // Find classes that ended more than 2 hours ago (start_at + duration_min + 120 min < now)
+  // No DB filter on is_cancelled — NULL != false in PostgreSQL, handle in JS
   const { data: classes, error: classesErr } = await supabase
     .from('classes')
-    .select('id, start_at, duration_min')
-    .eq('is_cancelled', false);
+    .select('id, start_at, duration_min, is_cancelled');
 
   if (classesErr) {
     console.error('[autoCheckin] failed to fetch classes:', classesErr.message);
     return;
   }
 
-  const eligibleClasses = classes.filter((cls) => {
+  console.log(`[autoCheckin] total classes in DB: ${classes?.length ?? 0}`);
+
+  const eligibleClasses = (classes ?? []).filter((cls) => {
+    if (cls.is_cancelled) return false;
     const endTime = new Date(cls.start_at);
     endTime.setMinutes(endTime.getMinutes() + (cls.duration_min ?? 0) + 120);
-    return endTime < now;
+    const eligible = endTime < now;
+    if (!eligible) {
+      console.log(`[autoCheckin] skip ${cls.id}: endTime=${endTime.toISOString()} >= now`);
+    }
+    return eligible;
   });
+
+  console.log(`[autoCheckin] eligible classes: ${eligibleClasses.length}`);
 
   for (const cls of eligibleClasses) {
     const { data: bookings, error: bookingsErr } = await supabase
@@ -131,6 +141,8 @@ cron.schedule('*/15 * * * *', () => {
 const start = async () => {
   try {
     await fastify.listen({ port: 3001, host: '0.0.0.0' });
+    // Run once on startup for immediate testing
+    autoCheckin().catch((err) => console.error('[autoCheckin] startup run error:', err.message));
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);
