@@ -61,8 +61,9 @@
 - /subscribe — только athlete (role из БД)
 - /mybookings показывает тренировки начиная с 00:00 текущего дня
 - Для теста тренера: UPDATE users SET telegram_id=X WHERE name='Иван'
-- Миграцию 003_freeze_requests.sql нужно применить в Supabase вручную
+- Миграцию 003_freeze_requests.sql нужно применить в Supabase вручному
 - Admin telegram_id для уведомлений: 103842071
+- Cron автосписания (*/15 * * * *) в backend/src/index.js: находит классы где start_at + duration_min + 120 мин < now(), переводит 'booked' → 'attended', списывает визит. НЕ вызывать при старте сервера — node --watch перезапускает процесс при каждом сохранении и вызывает двойное списание. Защита от двойного списания: .eq('status', 'booked') в запросе — уже attended-букинги не попадают в выборку. Фильтр is_cancelled проверяется в JS (!cls.is_cancelled), не в DB-запросе — .eq('is_cancelled', false) пропускает NULL-значения в PostgreSQL.
 
 ## Роли пользователей
 - athlete — записывается, смотрит баланс
