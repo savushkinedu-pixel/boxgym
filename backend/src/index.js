@@ -64,6 +64,7 @@ async function autoCheckin() {
   console.log(`[autoCheckin] eligible classes: ${eligibleClasses.length}`);
 
   for (const cls of eligibleClasses) {
+    console.log(`[autoCheckin] class ${cls.id}: checking bookings...`);
     const { data: bookings, error: bookingsErr } = await supabase
       .from('bookings')
       .select('id, user_id, user:users(id, telegram_id)')
@@ -74,6 +75,8 @@ async function autoCheckin() {
       console.error(`[autoCheckin] failed to fetch bookings for class ${cls.id}:`, bookingsErr.message);
       continue;
     }
+
+    console.log(`[autoCheckin] class ${cls.id}: found ${bookings?.length ?? 0} booked bookings`);
 
     if (!bookings || bookings.length === 0) continue;
 
