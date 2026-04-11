@@ -21,14 +21,20 @@
 - /web — Next.js админ-панель
 - /backend/migrations — SQL миграции (001_init, 002_seed, 003_freeze_requests)
 
+## Деплой (Railway)
+- Backend: https://boxgym-production.up.railway.app (сервис boxgym)
+- Bot: сервис valiant-grace, работает 24/7
+- Web: пока локально, деплой следующий шаг
+
 ## Прогресс
 - [x] M0 — Фундамент: monorepo, Supabase схема, Railway CI/CD, бот /start
 - [x] M1 — Расписание: CRUD классов, /schedule в боте, страница /schedule в вебе
 - [x] M2 — Запись и чекин: бронирование, отмена, /mybookings, /attendees, /mygroup для тренера, /subscribe массовая запись на месяц
 - [x] M3 — Баланс: абонементы, автосписание визитов через cron каждые 15 мин, история транзакций, freeze-запросы, веб-страница атлетов
 - [x] ReplyKeyboardMarkup меню: Расписание, Мои записи, Баланс, История
+- [x] Деплой backend + bot на Railway
 - [ ] M4 — Статистика: дашборд, посещаемость, отчёты
-- [ ] M5 — Полировка: онбординг, мониторинг, деплой Railway
+- [ ] Web деплой на boxgym.edsaw.cc
 
 ## Команды бота (актуальные)
 Атлет:
