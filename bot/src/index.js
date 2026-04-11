@@ -50,24 +50,41 @@ async function api(method, path, body) {
   return { ok: res.ok, status: res.status, data };
 }
 
+// ─── Меню ─────────────────────────────────────────────────────────────────────
+
+const mainMenu = Markup.keyboard([
+  ['📅 Расписание', '📋 Мои записи'],
+  ['💳 Баланс',     '📊 История'],
+]).resize();
+
 // ─── /start ───────────────────────────────────────────────────────────────────
 
-bot.start((ctx) =>
-  ctx.reply(
+bot.start(async (ctx) => {
+  const user = await getUserByTelegramId(ctx.from.id);
+  if (user) {
+    return ctx.reply(`С возвращением, ${user.name}! Выбери действие:`, mainMenu);
+  }
+  return ctx.reply(
     'Привет! Я бот боксёрского зала BoxGym. Выбери роль:',
     Markup.inlineKeyboard([
       Markup.button.callback('🥊 Атлет', 'role_athlete'),
       Markup.button.callback('🏋️ Тренер', 'role_trainer'),
     ])
-  )
-);
+  );
+});
 
-bot.action('role_athlete', (ctx) => { ctx.answerCbQuery(); ctx.reply('Ты выбрал роль Атлета. Добро пожаловать!'); });
-bot.action('role_trainer', (ctx) => { ctx.answerCbQuery(); ctx.reply('Ты выбрал роль Тренера. Добро пожаловать!'); });
+bot.action('role_athlete', (ctx) => {
+  ctx.answerCbQuery();
+  ctx.reply('Ты выбрал роль Атлета. Добро пожаловать!', mainMenu);
+});
+bot.action('role_trainer', (ctx) => {
+  ctx.answerCbQuery();
+  ctx.reply('Ты выбрал роль Тренера. Добро пожаловать!', mainMenu);
+});
 
 // ─── /schedule ────────────────────────────────────────────────────────────────
 
-bot.command('schedule', async (ctx) => {
+async function handleSchedule(ctx) {
   try {
     const res = await fetch(`${BACKEND_URL}/classes?week=current`);
     if (!res.ok) throw new Error(`Backend ${res.status}`);
@@ -92,7 +109,10 @@ bot.command('schedule', async (ctx) => {
     console.error(err);
     ctx.reply('Не удалось загрузить расписание. Попробуй позже.');
   }
-});
+}
+
+bot.command('schedule', handleSchedule);
+bot.hears('📅 Расписание', handleSchedule);
 
 bot.action(/^noop_/, (ctx) => ctx.answerCbQuery('Мест нет'));
 
@@ -119,7 +139,7 @@ bot.action(/^book_(.+)$/, async (ctx) => {
 
 // ─── /mybookings ──────────────────────────────────────────────────────────────
 
-bot.command('mybookings', async (ctx) => {
+async function handleMyBookings(ctx) {
   try {
     const user = await getUserByTelegramId(ctx.from.id);
     if (!user) return ctx.reply('Сначала зарегистрируйся: /start');
@@ -144,7 +164,10 @@ bot.command('mybookings', async (ctx) => {
     console.error(err);
     ctx.reply('Не удалось загрузить записи. Попробуй позже.');
   }
-});
+}
+
+bot.command('mybookings', handleMyBookings);
+bot.hears('📋 Мои записи', handleMyBookings);
 
 bot.action(/^cancel_(.+)$/, async (ctx) => {
   await ctx.answerCbQuery();
@@ -403,7 +426,7 @@ bot.on(message('text'), async (ctx, next) => {
 
 // ─── /balance (атлет) ─────────────────────────────────────────────────────────
 
-bot.command('balance', async (ctx) => {
+async function handleBalance(ctx) {
   try {
     const user = await getUserByTelegramId(ctx.from.id);
     if (!user) return ctx.reply('Сначала зарегистрируйся: /start');
@@ -433,11 +456,14 @@ bot.command('balance', async (ctx) => {
     console.error(err);
     ctx.reply('Ошибка. Попробуй позже.');
   }
-});
+}
+
+bot.command('balance', handleBalance);
+bot.hears('💳 Баланс', handleBalance);
 
 // ─── /history (атлет) ─────────────────────────────────────────────────────────
 
-bot.command('history', async (ctx) => {
+async function handleHistory(ctx) {
   try {
     const user = await getUserByTelegramId(ctx.from.id);
     if (!user) return ctx.reply('Сначала зарегистрируйся: /start');
@@ -463,7 +489,10 @@ bot.command('history', async (ctx) => {
     console.error(err);
     ctx.reply('Ошибка. Попробуй позже.');
   }
-});
+}
+
+bot.command('history', handleHistory);
+bot.hears('📊 История', handleHistory);
 
 // ─── /freeze (атлет) ──────────────────────────────────────────────────────────
 
