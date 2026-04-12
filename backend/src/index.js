@@ -8,6 +8,7 @@ import usersRoute from './routes/users.js';
 import membershipsRoute from './routes/memberships.js';
 import transactionsRoute from './routes/transactions.js';
 import { autoCheckin } from './autoCheckin.js';
+import statsRoute from './routes/stats.js';
 
 const fastify = Fastify({ logger: true });
 
@@ -17,6 +18,7 @@ fastify.register(bookingsRoute);
 fastify.register(usersRoute);
 fastify.register(membershipsRoute);
 fastify.register(transactionsRoute);
+fastify.register(statsRoute);
 
 // Run auto-checkin every 5 minutes
 cron.schedule('*/5 * * * *', () => {
