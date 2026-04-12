@@ -66,47 +66,6 @@ function formatTime(iso: string) {
   return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 }
 
-function BoxerIcon() {
-  const K = '#1e293b'; // outline
-  const S = '#fbbf24'; // skin
-  const B = '#3b82f6'; // shirt
-  const R = '#ef4444'; // gloves
-  const G = '#6b7280'; // shorts
-  const L = '#e2e8f0'; // legs
-
-  // [col, row, color] — pixel size 3, canvas 16×16 → 48×48
-  const px: [number, number, string][] = [
-    // head
-    [7,1,K],[8,1,K],[9,1,K],[10,1,K],
-    [6,2,K],[7,2,S],[8,2,S],[9,2,S],[10,2,K],
-    [6,3,K],[7,3,S],[8,3,K],[9,3,S],[10,3,K],
-    [6,4,K],[7,4,S],[8,4,S],[9,4,S],[10,4,K],
-    [6,5,K],[7,5,K],[8,5,K],[9,5,K],[10,5,K],
-    // body
-    [5,6,K],[6,6,B],[7,6,B],[8,6,B],[9,6,B],[10,6,B],[11,6,K],
-    [3,7,R],[4,7,K],[6,7,B],[7,7,B],[8,7,B],[9,7,B],[10,7,B],[12,7,K],[13,7,R],
-    [3,8,R],[4,8,K],[6,8,B],[7,8,B],[8,8,B],[9,8,B],[10,8,B],[12,8,K],[13,8,R],
-    [5,9,K],[6,9,B],[7,9,B],[8,9,B],[9,9,B],[10,9,B],[11,9,K],
-    [5,10,K],[6,10,B],[7,10,B],[8,10,B],[9,10,B],[10,10,B],[11,10,K],
-    // shorts
-    [6,11,K],[7,11,G],[8,11,G],[9,11,G],[10,11,K],
-    [6,12,G],[7,12,G],[8,12,G],[9,12,G],[10,12,G],
-    // legs
-    [6,13,L],[7,13,L],[9,13,L],[10,13,L],
-    [6,14,L],[7,14,L],[9,14,L],[10,14,L],
-    // shoes
-    [5,15,K],[6,15,K],[7,15,K],[9,15,K],[10,15,K],[11,15,K],
-  ];
-
-  return (
-    <svg width="48" height="48" viewBox="0 0 48 48" shapeRendering="crispEdges"
-         xmlns="http://www.w3.org/2000/svg">
-      {px.map(([col, row, fill], i) => (
-        <rect key={i} x={col * 3} y={row * 3} width={3} height={3} fill={fill} />
-      ))}
-    </svg>
-  );
-}
 
 function AttendanceBadge({ pct }: { pct: number }) {
   const color =
@@ -134,7 +93,7 @@ export default async function DashboardPage() {
     <main className="min-h-screen bg-gray-950 text-white p-8">
       <div className="max-w-5xl mx-auto">
         <h1 className="text-3xl font-bold mb-8 flex items-center gap-3">
-          <BoxerIcon />
+          <img src="/box.png" alt="boxer" style={{ height: '80px', imageRendering: 'pixelated' }} />
           Дашборд
         </h1>
 
