@@ -30,7 +30,7 @@
 - [x] M0 — Фундамент: monorepo, Supabase схема, Railway CI/CD, бот /start
 - [x] M1 — Расписание: CRUD классов, /schedule в боте, страница /schedule в вебе
 - [x] M2 — Запись и чекин: бронирование, отмена, /mybookings, /attendees, /mygroup для тренера, /subscribe массовая запись на месяц
-- [x] M3 — Баланс: абонементы, автосписание визитов через cron каждые 15 мин, история транзакций, freeze-запросы, веб-страница атлетов
+- [x] M3 — Баланс: абонементы, автосписание визитов через cron каждые 5 мин, история транзакций, freeze-запросы, веб-страница атлетов
 - [x] ReplyKeyboardMarkup меню: Расписание, Мои записи, Баланс, История
 - [x] Деплой backend + bot на Railway
 - [ ] M4 — Статистика: дашборд, посещаемость, отчёты
@@ -53,8 +53,9 @@
 
 ## Логика чекина
 - Тренер может отметить вручную через /attendees
-- Если не отметил — cron каждые 15 минут автоматически закрывает всех записанных как attended через 2 часа после окончания тренировки
-- Автосписание: visits/single → visits_left -= 1, unlimited/personal → только проверка valid_to
+- Если не отметил — cron каждые 5 минут (backend/src/autoCheckin.js) автоматически закрывает все bookings со статусом 'booked' как attended через 2 часа после start_at тренировки
+- Автосписание: visits/single → visits_left -= 1, создаётся транзакция type='debit'; unlimited/personal → только проверка valid_to, транзакция не создаётся
+- Статус 'cancelled' защищает от автосписания — такие bookings не трогаются
 - При visits_left = 0 — Telegram-уведомление атлету
 
 ## Backend маршруты (актуальные)
@@ -82,7 +83,9 @@
 - Для теста тренера: UPDATE users SET telegram_id=X WHERE name='Иван'
 - Миграцию 003_freeze_requests.sql нужно применить в Supabase вручную
 - Admin telegram_id для уведомлений: 103842071
-- Cron автосписания (*/15 * * * *) в backend/src/index.js — НЕ вызывать при старте сервера: node --watch перезапускает процесс при каждом сохранении и вызывает двойное списание. Защита: .eq('status', 'booked') в запросе не трогает уже attended-букинги. Фильтр is_cancelled проверяется в JS (!cls.is_cancelled) — .eq('is_cancelled', false) пропускает NULL в PostgreSQL.
+- Cron автосписания (*/5 * * * *) — логика в backend/src/autoCheckin.js, регистрируется в backend/src/index.js. НЕ вызывать при старте сервера: node --watch перезапускает процесс при каждом сохранении и вызывает двойное списание. Защита: .eq('status', 'booked') в запросе не трогает уже attended-букинги. Фильтр is_cancelled проверяется в JS (!cls.is_cancelled) — .eq('is_cancelled', false) пропускает NULL в PostgreSQL.
+- Автосписание визитов: через 2 часа после start_at все bookings со статусом 'booked' автоматически становятся 'attended', списывается 1 визит (visits_left -= 1), создаётся транзакция type='debit'. Тип 'debit' добавлен миграцией — CHECK constraint на transactions.type должен включать 'debit'.
+- Отмена тренером/атлетом (статус 'cancelled') защищает от списания — cron пропускает такие bookings.
 - bot/src/index.js: обработчики schedule/mybookings/balance/history вынесены в именованные функции, bot.command() и bot.hears() используют одну функцию
 
 ## Роли пользователей
