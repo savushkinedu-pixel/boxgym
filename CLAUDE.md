@@ -102,6 +102,7 @@
 backend: cd backend && npm run dev
 bot: cd bot && npm run dev
 web: cd web && npm run dev
+тест автосписания: cd backend && npm run test:checkin
 
 ## Документация
 - MANUAL.md — пользовательская инструкция (атлет, тренер, администратор). После каждой итерации/изменения логики обновлять MANUAL.md вместе с CLAUDE.md.
