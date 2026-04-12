@@ -85,7 +85,7 @@ export default async function DashboardPage() {
     { label: 'Посещаемость (30 дн.)', value: `${summary.attendance_rate_30d}%`, color:
         summary.attendance_rate_30d >= 70 ? 'text-green-400' :
         summary.attendance_rate_30d >= 50 ? 'text-yellow-400' : 'text-red-400' },
-    { label: 'Выручка за месяц', value: `${summary.revenue_this_month} руб.`, color: 'text-white' },
+    { label: 'Выручка за месяц', value: `${summary.revenue_this_month} €`, color: 'text-white' },
   ];
 
   return (
