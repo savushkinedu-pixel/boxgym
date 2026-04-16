@@ -97,7 +97,7 @@
 - Миграцию 003_freeze_requests.sql нужно применить в Supabase вручную
 - Миграцию 004_invite_tokens.sql нужно применить в Supabase вручную
 - Admin telegram_id для уведомлений: 103842071
-- BOT_USERNAME — env var для бота (имя бота без @, нужен для генерации invite-ссылок в /invite)
+- BOT_USERNAME=boxgymbot — env var для бота (имя бота без @, нужен для генерации invite-ссылок в /invite); fallback: ctx.botInfo?.username
 - invite_tokens.trainer_id — связь тренер↔атлет; used_by заполняется при регистрации
 - payment_proofs: file_id хранит Telegram file_id фото; уведомление тренеру/админу с кнопками confirm/reject
 - При подтверждении/отклонении оплаты бот ищет тренера через GET /invite-tokens?used_by=:userId; fallback — ADMIN_TELEGRAM_ID
