@@ -13,13 +13,13 @@
 
 ## Supabase
 - Project URL: https://rypgkmnjnyectmcoocoq.supabase.co
-- Таблицы: users, classes, bookings, memberships, transactions, freeze_requests
+- Таблицы: users, classes, bookings, memberships, transactions, freeze_requests, invite_tokens, payment_proofs
 
 ## Структура
 - /backend — REST API
 - /bot — Telegram бот
 - /web — Next.js админ-панель
-- /backend/migrations — SQL миграции (001_init, 002_seed, 003_freeze_requests)
+- /backend/migrations — SQL миграции (001_init, 002_seed, 003_freeze_requests, 004_invite_tokens)
 
 ## Деплой (Railway)
 - Backend: https://boxgym-production.up.railway.app (сервис boxgym)
@@ -34,20 +34,24 @@
 - [x] ReplyKeyboardMarkup меню: Расписание, Мои записи, Баланс, История
 - [x] Деплой backend + bot на Railway
 - [x] M4 — Статистика: дашборд, посещаемость, отчёты
+- [x] M4 — Онбординг: реферальные ссылки (/invite), регистрация по токену, подтверждение оплаты фото
 - [ ] Web деплой на boxgym.edsaw.cc
 
 ## Команды бота (актуальные)
 Атлет:
-- /start — регистрация, выбор роли; для вернувшихся пользователей сразу показывает меню
+- /start — без параметра: если зарегистрирован → меню, иначе "нужна ссылка от тренера"
+- /start invite_TOKEN — регистрация через реферальную ссылку тренера
 - /schedule — расписание на неделю с кнопкой [Записаться]
 - /mybookings — мои записи с кнопкой [Отменить]
 - /subscribe — массовая запись на повторяющиеся тренировки (выбор дней + время)
 - /balance — текущий абонемент (тип, визиты, срок)
 - /history — последние 10 транзакций
 - /freeze — заявка на заморозку абонемента (уведомляет admin telegram_id=103842071)
+- Фото боту — подтверждение оплаты: сохраняется в payment_proofs, тренер получает уведомление с кнопками [✅ Подтвердить] [❌ Отклонить]
 - ReplyKeyboardMarkup: кнопки внизу чата — 📅 Расписание, 📋 Мои записи, 💳 Баланс, 📊 История
 
 Тренер:
+- /invite — создать одноразовую реферальную ссылку для нового атлета
 - /mygroup — список записанных сегодня / завтра / на неделю
 - /attendees — опциональная ручная отметка посещений [✅ Пришёл] [❌ Не пришёл]
 
@@ -68,7 +72,15 @@
 - PATCH /memberships/:id/freeze|unfreeze
 - GET/POST /transactions, GET /transactions/export/:userId (CSV)
 - POST /freeze-requests, GET /freeze-requests
-- GET /users?telegram_id=X
+- GET /users?telegram_id=X, POST /users
+- POST /invite-tokens — создать токен (trainer_id → генерирует 8-символьный token)
+- GET /invite-tokens/:token — проверить токен (валиден, не использован)
+- PATCH /invite-tokens/:token/use — пометить использованным (used_by, used_at)
+- GET /invite-tokens?used_by=:userId — найти тренера, пригласившего атлета
+- POST /payment-proofs — сохранить file_id фото оплаты
+- GET /payment-proofs?status=pending — список
+- PATCH /payment-proofs/:id/confirm — подтвердить (возвращает user с telegram_id)
+- PATCH /payment-proofs/:id/reject — отклонить (возвращает user с telegram_id)
 
 ## Веб-страницы
 - /dashboard — метрики (неделя/месяц), последние 10 тренировок, должники
@@ -83,7 +95,12 @@
 - /mybookings показывает тренировки начиная с 00:00 текущего дня
 - Для теста тренера: UPDATE users SET telegram_id=X WHERE name='Иван'
 - Миграцию 003_freeze_requests.sql нужно применить в Supabase вручную
+- Миграцию 004_invite_tokens.sql нужно применить в Supabase вручную
 - Admin telegram_id для уведомлений: 103842071
+- BOT_USERNAME — env var для бота (имя бота без @, нужен для генерации invite-ссылок в /invite)
+- invite_tokens.trainer_id — связь тренер↔атлет; used_by заполняется при регистрации
+- payment_proofs: file_id хранит Telegram file_id фото; уведомление тренеру/админу с кнопками confirm/reject
+- При подтверждении/отклонении оплаты бот ищет тренера через GET /invite-tokens?used_by=:userId; fallback — ADMIN_TELEGRAM_ID
 - Cron автосписания (*/5 * * * *) — логика в backend/src/autoCheckin.js, регистрируется в backend/src/index.js. НЕ вызывать при старте сервера: node --watch перезапускает процесс при каждом сохранении и вызывает двойное списание. Защита: .eq('status', 'booked') в запросе не трогает уже attended-букинги. Фильтр is_cancelled проверяется в JS (!cls.is_cancelled) — .eq('is_cancelled', false) пропускает NULL в PostgreSQL.
 - Автосписание визитов: через 2 часа после start_at все bookings со статусом 'booked' автоматически становятся 'attended', списывается 1 визит (visits_left -= 1), создаётся транзакция type='debit'. Тип 'debit' добавлен миграцией — CHECK constraint на transactions.type должен включать 'debit'.
 - Отмена тренером/атлетом (статус 'cancelled') защищает от списания — cron пропускает такие bookings.
@@ -146,7 +163,6 @@ web: cd web && npm run dev
 - Перенос: в блочном абонементе можно перенести N тренировок, согласование с тренером
 
 ## План следующих этапов
-- M4: Онбординг (реферальные ссылки) + подтверждение оплаты
-- M5: Статистика (дашборд)
-- M6: Веб-панель расписание + атлеты
-- M7: Полировка и передача тренеру
+- [x] M4: Онбординг (реферальные ссылки) + подтверждение оплаты
+- M5: Web деплой на boxgym.edsaw.cc
+- M6: Полировка и передача тренеру

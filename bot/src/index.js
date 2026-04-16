@@ -60,26 +60,78 @@ const mainMenu = Markup.keyboard([
 // ─── /start ───────────────────────────────────────────────────────────────────
 
 bot.start(async (ctx) => {
+  const payload = ctx.startPayload; // text after /start, e.g. "invite_abc12345"
+
+  // ── Invite flow ──
+  if (payload && payload.startsWith('invite_')) {
+    const token = payload.slice(7);
+
+    // Already registered → just show menu
+    const existingUser = await getUserByTelegramId(ctx.from.id);
+    if (existingUser) {
+      return ctx.reply(`С возвращением, ${existingUser.name}! Выбери действие:`, mainMenu);
+    }
+
+    // Validate token
+    const tokenRes = await fetch(`${BACKEND_URL}/invite-tokens/${token}`);
+    if (!tokenRes.ok) {
+      return ctx.reply('❌ Ссылка недействительна или уже использована. Попроси тренера прислать новую.');
+    }
+    const tokenData = await tokenRes.json();
+
+    // Create athlete
+    const { ok, data: newUser } = await api('POST', '/users', {
+      telegram_id: ctx.from.id,
+      name: ctx.from.first_name,
+      role: 'athlete',
+    });
+    if (!ok) return ctx.reply('Ошибка регистрации. Попробуй позже.');
+
+    // Mark token used
+    await api('PATCH', `/invite-tokens/${token}/use`, { used_by: newUser.id });
+
+    // Notify trainer
+    try {
+      const trainerTelegramId = tokenData.trainer?.telegram_id;
+      if (trainerTelegramId) {
+        const handle = ctx.from.username ? `@${ctx.from.username}` : ctx.from.first_name;
+        await ctx.telegram.sendMessage(
+          trainerTelegramId,
+          `✅ Новый атлет ${handle} присоединился!`
+        );
+      }
+    } catch (e) {
+      console.error('[start invite] Failed to notify trainer:', e.message);
+    }
+
+    return ctx.reply(
+      '🥊 Добро пожаловать в BoxGym!\n\nДля записи на тренировки оформи абонемент — отправь фото оплаты.',
+      mainMenu
+    );
+  }
+
+  // ── Regular start (no invite) ──
   const user = await getUserByTelegramId(ctx.from.id);
   if (user) {
     return ctx.reply(`С возвращением, ${user.name}! Выбери действие:`, mainMenu);
   }
-  return ctx.reply(
-    'Привет! Я бот боксёрского зала BoxGym. Выбери роль:',
-    Markup.inlineKeyboard([
-      Markup.button.callback('🥊 Атлет', 'role_athlete'),
-      Markup.button.callback('🏋️ Тренер', 'role_trainer'),
-    ])
-  );
+  return ctx.reply('Для входа нужна ссылка от тренера 🔗');
 });
 
-bot.action('role_athlete', (ctx) => {
-  ctx.answerCbQuery();
-  ctx.reply('Ты выбрал роль Атлета. Добро пожаловать!', mainMenu);
-});
-bot.action('role_trainer', (ctx) => {
-  ctx.answerCbQuery();
-  ctx.reply('Ты выбрал роль Тренера. Добро пожаловать!', mainMenu);
+// ─── /invite (тренер) ─────────────────────────────────────────────────────────
+
+bot.command('invite', async (ctx) => {
+  const user = await getUserByTelegramId(ctx.from.id);
+  if (!user) return ctx.reply('Сначала зарегистрируйся: /start');
+  if (user.role !== 'trainer') return ctx.reply('Эта команда только для тренеров.');
+
+  const { ok, data } = await api('POST', '/invite-tokens', { trainer_id: user.id });
+  if (!ok) return ctx.reply('Не удалось создать ссылку. Попробуй позже.');
+
+  const botUsername = process.env.BOT_USERNAME;
+  const link = `https://t.me/${botUsername}?start=invite_${data.token}`;
+
+  return ctx.reply(`Отправь эту ссылку атлету 👇\n${link}\nСсылка одноразовая`);
 });
 
 // ─── /schedule ────────────────────────────────────────────────────────────────
@@ -532,6 +584,98 @@ bot.command('freeze', async (ctx) => {
     console.error(err);
     ctx.reply('Ошибка. Попробуй позже.');
   }
+});
+
+// ─── Фото оплаты (атлет) ──────────────────────────────────────────────────────
+
+bot.on(message('photo'), async (ctx) => {
+  const user = await getUserByTelegramId(ctx.from.id);
+  if (!user) return ctx.reply('Для входа нужна ссылка от тренера 🔗');
+
+  const fileId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
+
+  const { ok, data: proof } = await api('POST', '/payment-proofs', {
+    user_id: user.id,
+    file_id: fileId,
+  });
+  if (!ok) return ctx.reply('Не удалось сохранить фото. Попробуй позже.');
+
+  await ctx.reply('📸 Фото получено! Отправлено тренеру на подтверждение.');
+
+  // Find trainer who invited this athlete
+  let notifyId = ADMIN_TELEGRAM_ID;
+  try {
+    const trainerRes = await fetch(`${BACKEND_URL}/invite-tokens?used_by=${user.id}`);
+    if (trainerRes.ok) {
+      const tokenData = await trainerRes.json();
+      if (tokenData.trainer?.telegram_id) notifyId = tokenData.trainer.telegram_id;
+    }
+  } catch (e) {
+    console.error('[photo] Failed to find trainer:', e.message);
+  }
+
+  const handle = ctx.from.username ? `@${ctx.from.username}` : user.name;
+  try {
+    await ctx.telegram.sendPhoto(notifyId, fileId, {
+      caption: `💰 Атлет ${handle} прислал подтверждение оплаты`,
+      reply_markup: Markup.inlineKeyboard([
+        [
+          Markup.button.callback('✅ Подтвердить', `pconfirm_${proof.id}`),
+          Markup.button.callback('❌ Отклонить', `preject_${proof.id}`),
+        ],
+      ]).reply_markup,
+    });
+  } catch (e) {
+    console.error('[photo] Failed to notify trainer/admin:', e.message);
+  }
+});
+
+// ─── Подтверждение / отклонение оплаты ────────────────────────────────────────
+
+bot.action(/^pconfirm_(.+)$/, async (ctx) => {
+  await ctx.answerCbQuery('✅ Подтверждено');
+
+  const { ok, data } = await api('PATCH', `/payment-proofs/${ctx.match[1]}/confirm`, {});
+  if (!ok) return ctx.reply('Ошибка при подтверждении.');
+
+  const athleteTelegramId = data.user?.telegram_id;
+  if (athleteTelegramId) {
+    try {
+      await ctx.telegram.sendMessage(
+        athleteTelegramId,
+        '✅ Оплата подтверждена! Обратись к администратору для начисления абонемента.'
+      );
+    } catch (e) {
+      console.error('[pconfirm] Failed to notify athlete:', e.message);
+    }
+  }
+
+  try {
+    await ctx.editMessageCaption('✅ Оплата подтверждена', { reply_markup: { inline_keyboard: [] } });
+  } catch (_) {}
+});
+
+bot.action(/^preject_(.+)$/, async (ctx) => {
+  await ctx.answerCbQuery('❌ Отклонено');
+
+  const { ok, data } = await api('PATCH', `/payment-proofs/${ctx.match[1]}/reject`, {});
+  if (!ok) return ctx.reply('Ошибка при отклонении.');
+
+  const athleteTelegramId = data.user?.telegram_id;
+  if (athleteTelegramId) {
+    try {
+      await ctx.telegram.sendMessage(
+        athleteTelegramId,
+        '❌ Оплата не подтверждена. Пришли другое фото или обратись к тренеру.'
+      );
+    } catch (e) {
+      console.error('[preject] Failed to notify athlete:', e.message);
+    }
+  }
+
+  try {
+    await ctx.editMessageCaption('❌ Оплата отклонена', { reply_markup: { inline_keyboard: [] } });
+  } catch (_) {}
 });
 
 // ─── Launch ───────────────────────────────────────────────────────────────────
