@@ -128,7 +128,8 @@ bot.command('invite', async (ctx) => {
   const { ok, data } = await api('POST', '/invite-tokens', { trainer_id: user.id });
   if (!ok) return ctx.reply('Не удалось создать ссылку. Попробуй позже.');
 
-  const botUsername = process.env.BOT_USERNAME;
+  const botUsername = process.env.BOT_USERNAME || ctx.botInfo?.username;
+  if (!botUsername) return ctx.reply('BOT_USERNAME не задан. Обратись к администратору.');
   const link = `https://t.me/${botUsername}?start=invite_${data.token}`;
 
   return ctx.reply(`Отправь эту ссылку атлету 👇\n${link}\nСсылка одноразовая`);
