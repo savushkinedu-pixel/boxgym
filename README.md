@@ -19,6 +19,22 @@ boxgym/
 
 ## Локальный запуск
 
+### Backend + Bot (два терминала)
+
+**Вкладка 1 — Backend:**
+```bash
+cd /Users/eduards/Documents/CCODE/boxgym/backend
+npm run dev
+```
+
+**Вкладка 2 — Bot:**
+```bash
+cd /Users/eduards/Documents/CCODE/boxgym/bot
+npm run dev
+```
+
+---
+
 ### Backend (порт 3001)
 
 ```bash
