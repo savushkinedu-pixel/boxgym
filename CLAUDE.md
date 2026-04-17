@@ -35,9 +35,13 @@
 - [x] Деплой backend + bot на Railway
 - [x] M4 — Статистика: дашборд, посещаемость, отчёты
 - [x] M4 — Онбординг: реферальные ссылки (/invite), регистрация по токену, подтверждение оплаты фото
+- [x] M5 — Статистика посещений: новый /stats/summary, /stats/attendance, /stats/classes/top, /stats/athletes/lost, /stats/athlete/:id, /stats/trainer/:id; дашборд с recharts; /mystats в боте
 - [ ] Web деплой на boxgym.edsaw.cc
 
 ## Команды бота (актуальные)
+Общие (атлет + тренер):
+- /mystats — атлет: визиты за месяц, всего, серия дней 🔥; тренер: тренировок за месяц, средняя заполняемость
+
 Атлет:
 - /start — без параметра: если зарегистрирован → меню, иначе "нужна ссылка от тренера"
 - /start invite_TOKEN — регистрация через реферальную ссылку тренера
@@ -63,6 +67,14 @@
 - При visits_left = 0 — Telegram-уведомление атлету
 
 ## Backend маршруты (актуальные)
+- GET /stats/summary — total_athletes, active_memberships, visits_today, visits_month, no_show_rate, revenue_month
+- GET /stats/attendance?period=week|month — массив {date, count} для графика
+- GET /stats/classes/top — топ-5 тренировок по заполняемости
+- GET /stats/athletes/lost?days=14 — атлеты не приходившие N дней
+- GET /stats/athlete/:id — visits_total, visits_month, streak, last_visit
+- GET /stats/trainer/:id — classes_month, avg_fill_rate
+- GET /stats/recent-classes — последние 10 тренировок (legacy)
+- GET /stats/debtors — атлеты без абонемента или с заканчивающимся (legacy)
 - GET/POST /classes, PUT /classes/:id, DELETE /classes/:id
 - GET /classes?week=current, GET /classes?from=X&to=Y
 - GET /classes/trainer/:id?period=today|tomorrow|week

@@ -679,6 +679,41 @@ bot.action(/^preject_(.+)$/, async (ctx) => {
   } catch (_) {}
 });
 
+// ─── /mystats ─────────────────────────────────────────────────────────────────
+
+bot.command('mystats', async (ctx) => {
+  try {
+    const user = await getUserByTelegramId(ctx.from.id);
+    if (!user) return ctx.reply('Сначала зарегистрируйся: /start');
+
+    if (user.role === 'athlete') {
+      const res = await fetch(`${BACKEND_URL}/stats/athlete/${user.id}`);
+      if (!res.ok) return ctx.reply('Не удалось загрузить статистику. Попробуй позже.');
+      const s = await res.json();
+      const streakLine = s.streak > 0
+        ? `Серия: ${s.streak} дней подряд 🔥`
+        : 'Серия: —';
+      return ctx.reply(
+        `📊 Твоя статистика:\nВизитов за месяц: ${s.visits_month}\nВсего визитов: ${s.visits_total}\n${streakLine}`
+      );
+    }
+
+    if (user.role === 'trainer') {
+      const res = await fetch(`${BACKEND_URL}/stats/trainer/${user.id}`);
+      if (!res.ok) return ctx.reply('Не удалось загрузить статистику. Попробуй позже.');
+      const s = await res.json();
+      return ctx.reply(
+        `📊 Статистика:\nПроведено тренировок за месяц: ${s.classes_month}\nСредняя заполняемость: ${s.avg_fill_rate}%`
+      );
+    }
+
+    return ctx.reply('Статистика доступна для атлетов и тренеров.');
+  } catch (err) {
+    console.error(err);
+    ctx.reply('Ошибка. Попробуй позже.');
+  }
+});
+
 // ─── Launch ───────────────────────────────────────────────────────────────────
 
 bot.launch();

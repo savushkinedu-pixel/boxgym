@@ -1,58 +1,44 @@
+import AttendanceChart from './AttendanceChart';
+
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3001';
 
 const DAY_RU = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 const MONTH_RU = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
 
 type Summary = {
-  classes_this_week: number;
-  athletes_total: number;
-  attendance_rate_30d: number;
-  revenue_this_month: number;
+  total_athletes: number;
+  active_memberships: number;
+  visits_today: number;
+  visits_month: number;
+  no_show_rate: number;
+  revenue_month: number;
 };
 
-type RecentClass = {
-  start_at: string;
+type AttendancePoint = { date: string; count: number };
+
+type TopClass = {
+  class_id: string;
   type: string;
+  start_at: string;
   trainer_name: string;
-  booked_count: number;
   attended_count: number;
-  attendance_pct: number;
+  capacity: number;
 };
 
-type Debtor = {
+type LostAthlete = {
+  user_id: string;
   name: string;
-  telegram_id: number | null;
-  visits_left: number | null;
-  valid_to: string | null;
+  last_visit: string | null;
+  days_absent: number | null;
 };
 
-async function fetchSummary(): Promise<Summary> {
+async function fetchJSON<T>(path: string, fallback: T): Promise<T> {
   try {
-    const res = await fetch(`${BACKEND_URL}/stats/summary`, { next: { revalidate: 60 } });
+    const res = await fetch(`${BACKEND_URL}${path}`, { next: { revalidate: 60 } });
     if (!res.ok) throw new Error();
     return res.json();
   } catch {
-    return { classes_this_week: 0, athletes_total: 0, attendance_rate_30d: 0, revenue_this_month: 0 };
-  }
-}
-
-async function fetchRecentClasses(): Promise<RecentClass[]> {
-  try {
-    const res = await fetch(`${BACKEND_URL}/stats/recent-classes`, { next: { revalidate: 60 } });
-    if (!res.ok) throw new Error();
-    return res.json();
-  } catch {
-    return [];
-  }
-}
-
-async function fetchDebtors(): Promise<Debtor[]> {
-  try {
-    const res = await fetch(`${BACKEND_URL}/stats/debtors`, { next: { revalidate: 60 } });
-    if (!res.ok) throw new Error();
-    return res.json();
-  } catch {
-    return [];
+    return fallback;
   }
 }
 
@@ -66,27 +52,23 @@ function formatTime(iso: string) {
   return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 }
 
-
-function AttendanceBadge({ pct }: { pct: number }) {
-  const color =
-    pct >= 70 ? 'text-green-400' : pct >= 50 ? 'text-yellow-400' : 'text-red-400';
-  return <span className={`font-mono ${color}`}>{pct}%</span>;
-}
-
 export default async function DashboardPage() {
-  const [summary, recentClasses, debtors] = await Promise.all([
-    fetchSummary(),
-    fetchRecentClasses(),
-    fetchDebtors(),
+  const [summary, attendance, topClasses, lostAthletes] = await Promise.all([
+    fetchJSON<Summary>('/stats/summary', {
+      total_athletes: 0, active_memberships: 0,
+      visits_today: 0, visits_month: 0,
+      no_show_rate: 0, revenue_month: 0,
+    }),
+    fetchJSON<AttendancePoint[]>('/stats/attendance?period=month', []),
+    fetchJSON<TopClass[]>('/stats/classes/top', []),
+    fetchJSON<LostAthlete[]>('/stats/athletes/lost?days=14', []),
   ]);
 
-  const metrics = [
-    { label: 'Тренировок за неделю', value: summary.classes_this_week, color: 'text-white' },
-    { label: 'Атлетов всего', value: summary.athletes_total, color: 'text-white' },
-    { label: 'Посещаемость (30 дн.)', value: `${summary.attendance_rate_30d}%`, color:
-        summary.attendance_rate_30d >= 70 ? 'text-green-400' :
-        summary.attendance_rate_30d >= 50 ? 'text-yellow-400' : 'text-red-400' },
-    { label: 'Выручка за месяц', value: `${summary.revenue_this_month} €`, color: 'text-white' },
+  const cards = [
+    { label: 'Атлетов', value: summary.total_athletes },
+    { label: 'Активных абонементов', value: summary.active_memberships },
+    { label: 'Визитов сегодня', value: summary.visits_today },
+    { label: 'Визитов за месяц', value: summary.visits_month },
   ];
 
   return (
@@ -97,19 +79,25 @@ export default async function DashboardPage() {
           Дашборд
         </h1>
 
-        {/* Metric cards */}
+        {/* 4 metric cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
-          {metrics.map((m) => (
-            <div key={m.label} className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-              <p className="text-xs text-gray-400 mb-1">{m.label}</p>
-              <p className={`text-2xl font-bold ${m.color}`}>{m.value}</p>
+          {cards.map((c) => (
+            <div key={c.label} className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+              <p className="text-xs text-gray-400 mb-1">{c.label}</p>
+              <p className="text-2xl font-bold text-white">{c.value}</p>
             </div>
           ))}
         </div>
 
-        {/* Recent classes */}
-        <h2 className="text-xl font-semibold mb-4">Последние тренировки</h2>
-        {recentClasses.length === 0 ? (
+        {/* Attendance chart */}
+        <h2 className="text-xl font-semibold mb-4">Посещаемость за 30 дней</h2>
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-10">
+          <AttendanceChart data={attendance} />
+        </div>
+
+        {/* Top-5 classes */}
+        <h2 className="text-xl font-semibold mb-4">Топ-5 тренировок по заполняемости</h2>
+        {topClasses.length === 0 ? (
           <p className="text-gray-400 mb-10">Нет данных.</p>
         ) : (
           <div className="overflow-x-auto rounded-xl border border-gray-800 mb-10">
@@ -119,71 +107,69 @@ export default async function DashboardPage() {
                   <th className="px-4 py-3 text-left">Дата</th>
                   <th className="px-4 py-3 text-left">Тип</th>
                   <th className="px-4 py-3 text-left">Тренер</th>
-                  <th className="px-4 py-3 text-center">Записалось</th>
                   <th className="px-4 py-3 text-center">Пришло</th>
-                  <th className="px-4 py-3 text-center">Посещаемость</th>
+                  <th className="px-4 py-3 text-center">Вместимость</th>
+                  <th className="px-4 py-3 text-center">Заполняемость</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800">
-                {recentClasses.map((c, i) => (
-                  <tr key={i} className="hover:bg-gray-900 transition-colors">
-                    <td className="px-4 py-3 font-medium">
-                      {formatDate(c.start_at)}{' '}
-                      <span className="text-gray-400">{formatTime(c.start_at)}</span>
-                    </td>
-                    <td className="px-4 py-3 capitalize">{c.type}</td>
-                    <td className="px-4 py-3">{c.trainer_name}</td>
-                    <td className="px-4 py-3 text-center font-mono">{c.booked_count}</td>
-                    <td className="px-4 py-3 text-center font-mono">{c.attended_count}</td>
-                    <td className="px-4 py-3 text-center">
-                      <AttendanceBadge pct={c.attendance_pct} />
-                    </td>
-                  </tr>
-                ))}
+                {topClasses.map((c) => {
+                  const pct = c.capacity > 0 ? Math.round((c.attended_count / c.capacity) * 100) : 0;
+                  const color = pct >= 70 ? 'text-green-400' : pct >= 50 ? 'text-yellow-400' : 'text-red-400';
+                  return (
+                    <tr key={c.class_id} className="hover:bg-gray-900 transition-colors">
+                      <td className="px-4 py-3 font-medium">
+                        {formatDate(c.start_at)}{' '}
+                        <span className="text-gray-400">{formatTime(c.start_at)}</span>
+                      </td>
+                      <td className="px-4 py-3 capitalize">{c.type}</td>
+                      <td className="px-4 py-3">{c.trainer_name}</td>
+                      <td className="px-4 py-3 text-center font-mono">{c.attended_count}</td>
+                      <td className="px-4 py-3 text-center font-mono">{c.capacity}</td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`font-mono ${color}`}>{pct}%</span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
 
-        {/* Debtors */}
+        {/* Lost athletes */}
         <h2 className="text-xl font-semibold mb-4">
-          Должники{' '}
-          {debtors.length > 0 && (
-            <span className="text-sm font-normal text-red-400">({debtors.length})</span>
+          Не приходили 14+ дней{' '}
+          {lostAthletes.length > 0 && (
+            <span className="text-sm font-normal text-orange-400">({lostAthletes.length})</span>
           )}
         </h2>
-        {debtors.length === 0 ? (
-          <p className="text-gray-400">Должников нет.</p>
+        {lostAthletes.length === 0 ? (
+          <p className="text-gray-400">Все атлеты активны.</p>
         ) : (
           <div className="overflow-x-auto rounded-xl border border-gray-800">
             <table className="w-full text-sm">
               <thead className="bg-gray-900 text-gray-400 uppercase text-xs">
                 <tr>
                   <th className="px-4 py-3 text-left">Имя</th>
-                  <th className="px-4 py-3 text-left">Telegram ID</th>
-                  <th className="px-4 py-3 text-center">Визитов осталось</th>
-                  <th className="px-4 py-3 text-left">Абонемент до</th>
+                  <th className="px-4 py-3 text-left">Последний визит</th>
+                  <th className="px-4 py-3 text-center">Дней без визита</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800">
-                {debtors.map((d, i) => (
-                  <tr key={i} className="hover:bg-gray-900 transition-colors">
-                    <td className="px-4 py-3 font-medium">{d.name}</td>
-                    <td className="px-4 py-3 text-gray-400">{d.telegram_id ?? '—'}</td>
-                    <td className="px-4 py-3 text-center">
-                      {d.visits_left === null ? (
-                        <span className="text-gray-500">—</span>
-                      ) : (
-                        <span className={d.visits_left === 0 ? 'text-red-400 font-bold' : 'text-yellow-400'}>
-                          {d.visits_left}
-                        </span>
-                      )}
+                {lostAthletes.map((a) => (
+                  <tr key={a.user_id} className="hover:bg-gray-900 transition-colors">
+                    <td className="px-4 py-3 font-medium">{a.name}</td>
+                    <td className="px-4 py-3 text-gray-400">
+                      {a.last_visit ?? <span className="text-gray-600">никогда</span>}
                     </td>
-                    <td className="px-4 py-3">
-                      {d.valid_to ? (
-                        <span className="text-yellow-400">{d.valid_to}</span>
+                    <td className="px-4 py-3 text-center">
+                      {a.days_absent !== null ? (
+                        <span className={a.days_absent >= 30 ? 'text-red-400 font-bold' : 'text-orange-400'}>
+                          {a.days_absent}
+                        </span>
                       ) : (
-                        <span className="text-red-400">Нет абонемента</span>
+                        <span className="text-gray-600">—</span>
                       )}
                     </td>
                   </tr>
