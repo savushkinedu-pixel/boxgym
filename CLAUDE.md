@@ -24,7 +24,7 @@
 ## Деплой (Railway)
 - Backend: https://boxgym-production.up.railway.app (сервис boxgym)
 - Bot: сервис valiant-grace, работает 24/7
-- Web: пока локально, деплой следующий шаг
+- Web: https://boxgym.edsaw.cc (Railway)
 
 ## Прогресс
 - [x] M0 — Фундамент: monorepo, Supabase схема, Railway CI/CD, бот /start
@@ -36,7 +36,8 @@
 - [x] M4 — Статистика: дашборд, посещаемость, отчёты
 - [x] M4 — Онбординг: реферальные ссылки (/invite), регистрация по токену, подтверждение оплаты фото
 - [x] M5 — Статистика посещений: новый /stats/summary, /stats/attendance, /stats/classes/top, /stats/athletes/lost, /stats/athlete/:id, /stats/trainer/:id; дашборд с recharts; /mystats в боте
-- [ ] Web деплой на boxgym.edsaw.cc
+- [x] M5 — Web деплой на https://boxgym.edsaw.cc
+- [x] M6 — Полировка и передача тренеру
 
 ## Команды бота (актуальные)
 Общие (атлет + тренер):
@@ -176,5 +177,5 @@ web: cd web && npm run dev
 
 ## План следующих этапов
 - [x] M4: Онбординг (реферальные ссылки) + подтверждение оплаты
-- M5: Web деплой на boxgym.edsaw.cc
-- M6: Полировка и передача тренеру
+- [x] M5: Web деплой на https://boxgym.edsaw.cc
+- [x] M6: Полировка и передача тренеру
