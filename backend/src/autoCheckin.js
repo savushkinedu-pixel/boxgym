@@ -1,19 +1,5 @@
 import supabase from './lib/supabase.js';
-
-const BOT_TOKEN = process.env.BOT_TOKEN;
-
-async function sendTelegram(telegramId, text) {
-  if (!BOT_TOKEN || !telegramId) return;
-  try {
-    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: telegramId, text }),
-    });
-  } catch (err) {
-    console.error('[sendTelegram] error:', err.message);
-  }
-}
+import { sendTelegram } from './lib/telegram.js';
 
 export async function autoCheckin() {
   const now = new Date();

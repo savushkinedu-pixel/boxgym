@@ -549,7 +549,7 @@ bot.hears('📊 История', handleHistory);
 
 // ─── /freeze (атлет) ──────────────────────────────────────────────────────────
 
-const ADMIN_TELEGRAM_ID = 103842071;
+const ADMIN_TELEGRAM_ID = Number(process.env.ADMIN_TELEGRAM_ID) || 103842071;
 
 bot.command('freeze', async (ctx) => {
   try {
