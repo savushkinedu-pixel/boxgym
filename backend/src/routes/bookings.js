@@ -1,5 +1,8 @@
 import supabase from '../lib/supabase.js';
 import { sendTelegram } from '../lib/telegram.js';
+import { checkBookingEligibility, markTrialUsed } from '../lib/eligibility.js';
+
+const DAY_ABBR = { mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6, sun: 0 };
 
 export default async function bookingsRoute(fastify) {
   // GET /bookings?class_id=X&user_id=Y&upcoming=true
@@ -32,9 +35,19 @@ export default async function bookingsRoute(fastify) {
     return data;
   });
 
-  // POST /bookings — записаться на тренировку
+  // POST /bookings — записаться на тренировку (с проверкой eligibility)
   fastify.post('/bookings', async (request, reply) => {
     const { class_id, user_id } = request.body;
+
+    // Eligibility check
+    const elig = await checkBookingEligibility(user_id);
+    if (!elig.eligible) {
+      const msg =
+        elig.reason === 'no_membership'
+          ? 'Для записи нужен активный абонемент. Обратитесь к тренеру.'
+          : 'Пользователь не найден.';
+      return reply.status(400).send({ error: msg });
+    }
 
     // Класс существует и не отменён
     const { data: cls, error: clsErr } = await supabase
@@ -74,7 +87,138 @@ export default async function bookingsRoute(fastify) {
       .single();
 
     if (error) return reply.status(400).send({ error: error.message });
+
+    if (elig.useTrialAfterBook) {
+      await markTrialUsed(user_id);
+      await supabase.from('transactions').insert({
+        user_id,
+        membership_id: null,
+        visits_delta: 0,
+        type: 'debit',
+        note: 'Пробный визит',
+      });
+    }
+
     return reply.status(201).send(data);
+  });
+
+  // POST /bookings/subscribe — массовая запись по дням недели + время
+  fastify.post('/bookings/subscribe', async (request, reply) => {
+    const { user_id, days, time, weeks = 4 } = request.body ?? {};
+
+    // --- Validation ---
+    if (!user_id) return reply.status(400).send({ error: 'user_id обязателен' });
+
+    const validDays = Object.keys(DAY_ABBR);
+    if (!Array.isArray(days) || days.length === 0 || days.some((d) => !validDays.includes(d))) {
+      return reply.status(400).send({ error: `days должен быть непустым массивом из: ${validDays.join(', ')}` });
+    }
+    if (!time || !/^\d{1,2}:\d{2}$/.test(time)) {
+      return reply.status(400).send({ error: 'time должен быть в формате HH:MM' });
+    }
+    const weeksN = Math.min(Math.max(parseInt(weeks, 10) || 4, 1), 8);
+
+    // --- Eligibility ---
+    const elig = await checkBookingEligibility(user_id);
+    if (!elig.eligible) {
+      const msg =
+        elig.reason === 'no_membership'
+          ? 'Для записи нужен активный абонемент. Обратитесь к тренеру.'
+          : 'Пользователь не найден.';
+      return reply.status(400).send({ error: msg });
+    }
+
+    const limit = elig.visitsLimit; // Infinity for unlimited, N for visits, 1 for trial
+
+    // --- Fetch classes for the period ---
+    const from = new Date();
+    from.setHours(0, 0, 0, 0);
+    const to = new Date(from.getTime() + weeksN * 7 * 24 * 60 * 60 * 1000);
+
+    const { data: allClasses, error: clsErr } = await supabase
+      .from('classes')
+      .select('id, start_at, capacity, is_cancelled')
+      .gte('start_at', from.toISOString())
+      .lt('start_at', to.toISOString())
+      .eq('is_cancelled', false)
+      .order('start_at');
+
+    if (clsErr) return reply.status(500).send({ error: clsErr.message });
+
+    // --- Filter by days + time ---
+    const targetDays = new Set(days.map((d) => DAY_ABBR[d]));
+    const [targetH, targetM] = time.split(':').map(Number);
+
+    const matching = (allClasses || []).filter((c) => {
+      const d = new Date(c.start_at);
+      return targetDays.has(d.getDay()) && d.getHours() === targetH && d.getMinutes() === targetM;
+    });
+
+    // --- Book each matching class ---
+    const booked = [];
+    const skipped = [];
+
+    for (const c of matching) {
+      if (booked.length >= limit) {
+        skipped.push({ class_id: c.id, start_at: c.start_at, reason: 'limit_reached' });
+        continue;
+      }
+
+      // Check capacity
+      const { count } = await supabase
+        .from('bookings')
+        .select('id', { count: 'exact', head: true })
+        .eq('class_id', c.id)
+        .neq('status', 'cancelled');
+
+      if (count >= c.capacity) {
+        skipped.push({ class_id: c.id, start_at: c.start_at, reason: 'full' });
+        continue;
+      }
+
+      // Check duplicate
+      const { data: dup } = await supabase
+        .from('bookings')
+        .select('id')
+        .eq('class_id', c.id)
+        .eq('user_id', user_id)
+        .neq('status', 'cancelled')
+        .maybeSingle();
+
+      if (dup) {
+        skipped.push({ class_id: c.id, start_at: c.start_at, reason: 'already_booked' });
+        continue;
+      }
+
+      // Create booking
+      const { error: insErr } = await supabase
+        .from('bookings')
+        .insert({ class_id: c.id, user_id, status: 'booked' });
+
+      if (insErr) {
+        skipped.push({ class_id: c.id, start_at: c.start_at, reason: insErr.message });
+      } else {
+        booked.push(c.id);
+      }
+    }
+
+    // Mark trial used after successful bookings
+    if (elig.useTrialAfterBook && booked.length > 0) {
+      await markTrialUsed(user_id);
+      await supabase.from('transactions').insert({
+        user_id,
+        membership_id: null,
+        visits_delta: 0,
+        type: 'debit',
+        note: 'Пробный визит',
+      });
+    }
+
+    return reply.status(200).send({
+      booked,
+      skipped,
+      summary: { total: matching.length, booked: booked.length, skipped: skipped.length },
+    });
   });
 
   // DELETE /bookings/:id — отменить запись

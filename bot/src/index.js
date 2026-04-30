@@ -345,10 +345,11 @@ bot.command('mygroup', async (ctx) => {
 // ─── /subscribe (атлет) — массовая запись ─────────────────────────────────────
 
 // State: Map<telegramId, { step: 'days'|'time', selectedDays: Set<number> }>
-// Days: 1=Пн, 2=Вт, 3=Ср, 4=Чт, 5=Пт, 6=Сб, 7=Вс
+// Days: 1=Пн … 7=Вс (display); backend expects 'mon'…'sun'
 const subscribeState = new Map();
 
 const DAY_LABELS = ['', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']; // index 1-7
+const DAY_ABBR   = ['', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']; // index 1-7
 
 function buildDayKeyboard(selectedDays) {
   const row1 = [1, 2, 3, 4].map((d) =>
@@ -359,11 +360,6 @@ function buildDayKeyboard(selectedDays) {
   );
   row2.push(Markup.button.callback('Готово →', 'sub_done'));
   return Markup.inlineKeyboard([row1, row2]);
-}
-
-// Convert my day (1=Mon…7=Sun) to JS getDay() (0=Sun, 1=Mon…6=Sat)
-function myDayToJS(d) {
-  return d === 7 ? 0 : d;
 }
 
 bot.command('subscribe', async (ctx) => {
@@ -383,11 +379,7 @@ bot.action(/^subday_(\d)$/, async (ctx) => {
   if (!state || state.step !== 'days') return;
 
   const day = parseInt(ctx.match[1]);
-  if (state.selectedDays.has(day)) {
-    state.selectedDays.delete(day);
-  } else {
-    state.selectedDays.add(day);
-  }
+  state.selectedDays.has(day) ? state.selectedDays.delete(day) : state.selectedDays.add(day);
 
   await ctx.editMessageReplyMarkup(buildDayKeyboard(state.selectedDays).reply_markup);
 });
@@ -398,9 +390,7 @@ bot.action('sub_done', async (ctx) => {
   const state = subscribeState.get(ctx.from.id);
   if (!state || state.step !== 'days') return;
 
-  if (state.selectedDays.size === 0) {
-    return ctx.reply('Выбери хотя бы один день.');
-  }
+  if (state.selectedDays.size === 0) return ctx.reply('Выбери хотя бы один день.');
 
   state.step = 'time';
   const dayNames = [...state.selectedDays].sort().map((d) => DAY_LABELS[d]).join(', ');
@@ -419,60 +409,39 @@ bot.on(message('text'), async (ctx, next) => {
     return ctx.reply('Неверный формат. Введи время, например: 09:30');
   }
 
+  const capturedDays = new Set(state.selectedDays);
   subscribeState.delete(ctx.from.id);
 
   const user = await getUserByTelegramId(ctx.from.id);
   if (!user) return ctx.reply('Ошибка: пользователь не найден.');
 
-  // Fetch all classes for next 4 weeks
-  const from = new Date(); from.setHours(0, 0, 0, 0);
-  const to   = new Date(from.getTime() + 28 * 24 * 60 * 60 * 1000);
+  const days = [...capturedDays].sort().map((d) => DAY_ABBR[d]);
 
-  const res = await fetch(
-    `${BACKEND_URL}/classes?from=${from.toISOString()}&to=${to.toISOString()}`
-  );
-  const allClasses = await res.json();
-
-  // Filter by selected days + time
-  const targetDaysJS = new Set([...state.selectedDays].map(myDayToJS));
-  const [targetH, targetM] = timeInput.split(':').map(Number);
-
-  const matching = allClasses.filter((c) => {
-    const d = new Date(c.start_at);
-    return (
-      targetDaysJS.has(d.getDay()) &&
-      d.getHours() === targetH &&
-      d.getMinutes() === targetM &&
-      !c.is_cancelled
-    );
+  const { ok, data } = await api('POST', '/bookings/subscribe', {
+    user_id: user.id,
+    days,
+    time: timeInput,
+    weeks: 4,
   });
 
-  if (!matching.length) {
-    const dayNames = [...state.selectedDays].sort().map((d) => DAY_LABELS[d]).join(', ');
-    return ctx.reply(
-      `❌ Не найдено тренировок в ${dayNames} в ${timeInput} на ближайшие 4 недели.`
-    );
+  if (!ok) return ctx.reply(`❌ ${data.error ?? 'Ошибка при записи.'}`);
+
+  const { summary, skipped } = data;
+
+  if (summary.booked === 0) {
+    const dayNames = [...capturedDays].sort().map((d) => DAY_LABELS[d]).join(', ');
+    return ctx.reply(`❌ Не найдено подходящих тренировок в ${dayNames} в ${timeInput} на 4 недели вперёд.`);
   }
 
-  // Book all matching classes
-  let booked = 0;
-  const skipped = [];
+  const dayNames = [...capturedDays].sort().map((d) => DAY_LABELS[d]).join(' и ');
+  let msg = `✅ Записал тебя на *${summary.booked}* тренировок: ${dayNames} ${timeInput}`;
 
-  for (const c of matching) {
-    const { ok, data } = await api('POST', '/bookings', { class_id: c.id, user_id: user.id });
-    if (ok) {
-      booked++;
-    } else if (data.error !== 'Уже записан') {
-      skipped.push(`${fmtDate(c.start_at)} ${fmtTime(c.start_at)}: ${data.error}`);
-    }
+  const reasons = { full: 'нет мест', already_booked: 'уже записан', limit_reached: 'лимит абонемента' };
+  const notable = skipped.filter((s) => s.reason !== 'already_booked');
+  if (notable.length) {
+    msg += `\n\n⚠️ Пропущено ${notable.length}:\n`;
+    msg += notable.map((s) => `• ${fmtDate(s.start_at)} — ${reasons[s.reason] ?? s.reason}`).join('\n');
   }
-
-  const lastClass   = matching[matching.length - 1];
-  const dayNames    = [...state.selectedDays].sort().map((d) => DAY_LABELS[d]).join(' и ');
-  const untilDate   = fmtDate(lastClass.start_at);
-
-  let msg = `✅ Записал тебя на *${booked}* тренировок: ${dayNames} ${timeInput} до ${untilDate}`;
-  if (skipped.length) msg += `\n\n⚠️ Пропущено:\n${skipped.join('\n')}`;
 
   return ctx.reply(msg, { parse_mode: 'Markdown' });
 });
@@ -521,11 +490,10 @@ async function handleHistory(ctx) {
     const user = await getUserByTelegramId(ctx.from.id);
     if (!user) return ctx.reply('Сначала зарегистрируйся: /start');
 
-    const res = await fetch(`${BACKEND_URL}/transactions/${user.id}`);
+    const res = await fetch(`${BACKEND_URL}/transactions/${user.id}?limit=10`);
     if (!res.ok) return ctx.reply('Не удалось загрузить историю.');
 
-    const txns = await res.json();
-    const last10 = txns.slice(0, 10);
+    const last10 = await res.json();
 
     if (!last10.length) return ctx.reply('История транзакций пуста.');
 
