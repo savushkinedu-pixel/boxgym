@@ -1,14 +1,17 @@
 import supabase from '../lib/supabase.js';
 
 export default async function transactionsRoute(fastify) {
-  // GET /transactions/:userId — история (последние 20)
+  // GET /transactions/:userId — история (?limit=N, default 20, max 100)
   fastify.get('/transactions/:userId', async (request, reply) => {
+    const raw = parseInt(request.query.limit ?? '20', 10);
+    const limit = Number.isNaN(raw) ? 20 : Math.min(Math.max(raw, 1), 100);
+
     const { data, error } = await supabase
       .from('transactions')
       .select('*')
       .eq('user_id', request.params.userId)
       .order('created_at', { ascending: false })
-      .limit(20);
+      .limit(limit);
 
     if (error) return reply.status(500).send({ error: error.message });
     return data;
