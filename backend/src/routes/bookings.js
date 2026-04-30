@@ -144,7 +144,7 @@ export default async function bookingsRoute(fastify) {
             user_id: userId,
             membership_id: membership.id,
             visits_delta: -1,
-            type: 'charge',
+            type: 'debit',
             note: 'Списание за тренировку',
           });
 
